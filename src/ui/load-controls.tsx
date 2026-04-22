@@ -68,7 +68,7 @@ const LoadControls = (props: { setProperty: SetProperty }) => {
                 <input type='file' id='file' accept='.glb,.gltf,.ply' multiple onChange={onFileSelected} ref={inputFile} style={{ display: 'none' }} />
                 <div id="drag-drop" onClick={onLoadButtonClick}>
                     <Button id="drag-drop-search-icon" icon='E129' />
-                    <Label class='desktop' text="Drag & drop .glb, .gltf, or .ply files, or click to open files" />
+                    <Label class='desktop' text="Drag & drop .glb, .gltf, or .ply files, or click to open files. Drop a .glb and a .ply together to align the mesh to the splats. Hold Shift when dropping to add to the current scene." />
                     <Label class='mobile' text="Click to open files" />
                 </div>
                 <Label id='or-text' text="OR" class="centered-label" />

@@ -290,6 +290,31 @@ input {
     top: 20px;
 }
 
+#gizmo-toolbar {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    pointer-events: auto;
+}
+
+#gizmo-toolbar[hidden] {
+    display: none;
+}
+
+.gizmo-button {
+    margin: 0 4px !important;
+    min-width: 56px !important;
+    padding: 0 10px !important;
+    font-size: 12px !important;
+}
+
+.gizmo-button.gizmo-space-button {
+    margin-left: 16px !important;
+}
+
 #launch-ar-button {
     position: absolute;
     bottom: 20px;

@@ -27,7 +27,8 @@ export const Vector = (props: {
     label: string,
     value:any,
     dimensions: 2 | 3 | 4,
-    enabled?: boolean}) => {
+    enabled?: boolean,
+    onChange?: (value: number[]) => void}) => {
 
     return <Container class='panel-option' enabled={props.enabled ?? true}>
         <Label
@@ -36,7 +37,8 @@ export const Vector = (props: {
         <VectorInput class='panel-value'
             dimensions={props.dimensions}
             value={props.value}
-            precision={7} />
+            precision={7}
+            onChange={props.onChange}/>
     </Container>;
 };
 

@@ -7,7 +7,11 @@ import {
     EVENT_KEYDOWN,
     FILTER_NEAREST,
     KEY_F,
+    KEY_G,
+    KEY_Q,
     KEY_R,
+    KEY_T,
+    KEY_Y,
     LAYERID_DEPTH,
     LAYERID_SKYBOX,
     PIXELFORMAT_DEPTH,
@@ -76,6 +80,7 @@ import { Multiframe } from './multiframe';
 import { Picker } from './picker';
 import { PngExporter } from './png-exporter';
 import { ShadowCatcher } from './shadow-catcher';
+import { TransformController, type GizmoMode, type GizmoSpace } from './transform-controller';
 import { File, HierarchyNode, MorphTargetData, SceneCamera } from './types';
 import { XRObjectPlacementController } from './xr-mode';
 import { MeshoptDecoder } from '../lib/meshopt_decoder.module.js';
@@ -195,6 +200,12 @@ class Viewer {
 
     shadowCatcher: ShadowCatcher = null;
 
+    transformController: TransformController = null;
+
+    // true while the viewer itself is writing position/rotation/scale to the
+    // observer, so the UI->entity write-back listener doesn't echo it back.
+    suppressSelectedNodeSync = false;
+
     xrMode: XRObjectPlacementController;
 
     canvasResize = true;
@@ -292,6 +303,22 @@ class Viewer {
                 }
                 case KEY_R: {
                     this.cameraControls.reset(Vec3.ZERO, new Vec3(2, 2, 2));
+                    break;
+                }
+                case KEY_Q: {
+                    this.observer.set('gizmo.mode', 'none');
+                    break;
+                }
+                case KEY_G: {
+                    this.observer.set('gizmo.mode', 'translate');
+                    break;
+                }
+                case KEY_T: {
+                    this.observer.set('gizmo.mode', 'rotate');
+                    break;
+                }
+                case KEY_Y: {
+                    this.observer.set('gizmo.mode', 'scale');
                     break;
                 }
             }
@@ -404,6 +431,24 @@ class Viewer {
 
         // dynamic shadow catcher
         this.shadowCatcher = new ShadowCatcher(app, this.camera.camera, this.debugRoot, this.sceneRoot);
+
+        // transform gizmo controller for aligning the mesh to splats
+        this.transformController = new TransformController(app, this.camera.camera, {
+            onStart: () => {
+                this.cameraControls.enabled = false;
+            },
+            onMove: () => {
+                this.syncSelectedNodeTransform();
+                this.dirtyBounds = true;
+                this.renderNextFrame();
+            },
+            onEnd: () => {
+                this.cameraControls.enabled = true;
+                this.syncSelectedNodeTransform();
+                this.dirtyBounds = true;
+                this.renderNextFrame();
+            }
+        });
 
         // xr support
         this.initXrMode();
@@ -644,8 +689,15 @@ class Viewer {
             'animation.progress': this.setAnimationProgress.bind(this),
 
             'scene.selectedNode.path': this.setSelectedNode.bind(this),
+            'scene.selectedNode.position': this.applySelectedNodePosition.bind(this),
+            'scene.selectedNode.rotation': this.applySelectedNodeRotation.bind(this),
+            'scene.selectedNode.scale': this.applySelectedNodeScale.bind(this),
             'scene.variant.selected': this.setSelectedVariant.bind(this),
             'scene.selectedCamera': this.setSelectedCamera.bind(this),
+
+            // gizmo
+            'gizmo.mode': (mode: GizmoMode) => this.transformController.setMode(mode),
+            'gizmo.space': (space: GizmoSpace) => this.transformController.setSpace(space),
 
             centerScene: this.setCenterScene.bind(this)
         };
@@ -656,6 +708,14 @@ class Viewer {
         // register control events
         this.controlEventKeys.forEach((e) => {
             this.observer.on(`${e}:set`, controlEvents[e]);
+        });
+
+        // one-shot gizmo reset trigger - not persisted / not part of reloadSettings
+        this.observer.on('gizmoResetTrigger:set', () => {
+            this.transformController.resetTransform();
+            this.syncSelectedNodeTransform();
+            this.dirtyBounds = true;
+            this.renderNextFrame();
         });
     }
 
@@ -898,12 +958,19 @@ class Viewer {
         }
         this.sceneCameras = [];
 
+        // detach the transform gizmo from any entity we're about to destroy
+        this.selectedNode = null;
+        if (this.transformController) {
+            this.transformController.attach(null);
+        }
+
         this.entities.forEach((entity) => {
             this.sceneRoot.removeChild(entity);
             this.shadowCatcher.onEntityRemoved(entity);
             entity.destroy();
         });
         this.entities = [];
+        this.entityAssets = [];
 
         this.assets.forEach((asset) => {
             app.assets.remove(asset);
@@ -1455,6 +1522,7 @@ class Viewer {
     setSelectedNode(path: string) {
         const graphNode = this.app.root.findByPath(path);
         if (graphNode) {
+            this.suppressSelectedNodeSync = true;
             this.observer.set('scene.selectedNode', {
                 name: graphNode.name,
                 path: path,
@@ -1462,12 +1530,93 @@ class Viewer {
                 rotation: graphNode.getLocalEulerAngles().toString(),
                 scale: graphNode.getLocalScale().toString()
             });
+            this.suppressSelectedNodeSync = false;
         }
 
         this.selectedNode = graphNode;
+
+        // attach the gizmo to the newly selected entity (or detach if none)
+        if (this.transformController) {
+            this.transformController.attach((graphNode as Entity) ?? null);
+        }
+
         this.dirtyWireframe = true;
         this.dirtyBounds = true;
         this.dirtySkeleton = true;
+        this.renderNextFrame();
+    }
+
+    // push the current selected entity's local transform into the observer
+    // without re-applying it back to the entity
+    private syncSelectedNodeTransform() {
+        const node = this.selectedNode;
+        if (!node) {
+            return;
+        }
+        this.suppressSelectedNodeSync = true;
+        this.observer.set('scene.selectedNode.position', node.getLocalPosition().toString());
+        this.observer.set('scene.selectedNode.rotation', node.getLocalEulerAngles().toString());
+        this.observer.set('scene.selectedNode.scale', node.getLocalScale().toString());
+        this.suppressSelectedNodeSync = false;
+    }
+
+    // convert a value written by the UI (usually number[], but may be a Vec3 or
+    // "x, y, z" string) into a [x, y, z] number triplet
+    private static parseVec3(value: any): [number, number, number] | null {
+        if (!value) {
+            return null;
+        }
+        if (Array.isArray(value) && value.length >= 3) {
+            return [Number(value[0]), Number(value[1]), Number(value[2])];
+        }
+        if (typeof value === 'object' && '0' in value && '1' in value && '2' in value) {
+            return [Number((value as any)[0]), Number((value as any)[1]), Number((value as any)[2])];
+        }
+        if (typeof value === 'string') {
+            const parts = value.split(',').map(s => Number(s.trim()));
+            if (parts.length >= 3 && parts.every(n => !isNaN(n))) {
+                return [parts[0], parts[1], parts[2]];
+            }
+        }
+        return null;
+    }
+
+    private applySelectedNodePosition(value: any) {
+        if (this.suppressSelectedNodeSync || !this.selectedNode) {
+            return;
+        }
+        const v = Viewer.parseVec3(value);
+        if (!v) {
+            return;
+        }
+        this.selectedNode.setLocalPosition(v[0], v[1], v[2]);
+        this.dirtyBounds = true;
+        this.renderNextFrame();
+    }
+
+    private applySelectedNodeRotation(value: any) {
+        if (this.suppressSelectedNodeSync || !this.selectedNode) {
+            return;
+        }
+        const v = Viewer.parseVec3(value);
+        if (!v) {
+            return;
+        }
+        this.selectedNode.setLocalEulerAngles(v[0], v[1], v[2]);
+        this.dirtyBounds = true;
+        this.renderNextFrame();
+    }
+
+    private applySelectedNodeScale(value: any) {
+        if (this.suppressSelectedNodeSync || !this.selectedNode) {
+            return;
+        }
+        const v = Viewer.parseVec3(value);
+        if (!v) {
+            return;
+        }
+        this.selectedNode.setLocalScale(v[0], v[1], v[2]);
+        this.dirtyBounds = true;
         this.renderNextFrame();
     }
 
@@ -1903,6 +2052,18 @@ class Viewer {
                 }
             }
         });
+
+        // auto-select the first mesh (.glb container) entity and default to the
+        // translate gizmo when both a mesh and a splat are present so the user
+        // can immediately start aligning the mesh to the splats.
+        const meshEntity = this.entityAssets.find(ea => ea.asset?.type === 'container')?.entity;
+        const hasSplat = this.entityAssets.some(ea => ea.asset?.type === 'gsplat');
+        if (meshEntity && !this.selectedNode) {
+            this.setSelectedNode(meshEntity.path);
+            if (hasSplat && this.observer.get('gizmo.mode') === 'none') {
+                this.observer.set('gizmo.mode', 'translate');
+            }
+        }
 
         // dirty everything
         this.dirtyWireframe = this.dirtyBounds = this.dirtySkeleton = this.dirtyGrid = this.dirtyNormals = true;

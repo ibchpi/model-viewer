@@ -115,8 +115,7 @@ export interface ObserverData {
             rotation: {
                 0: number,
                 1: number,
-                2: number,
-                3: number
+                2: number
             },
             scale: {
                 0: number,
@@ -155,6 +154,10 @@ export interface ObserverData {
     },
     enableWebGPU: boolean,
     centerScene: boolean,
+    gizmo: {
+        mode: 'none' | 'translate' | 'rotate' | 'scale',
+        space: 'local' | 'world'
+    }
 }
 
 export type SetProperty = (path: string, value: any) => void;

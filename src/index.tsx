@@ -131,8 +131,7 @@ const observerData: ObserverData = {
             rotation: {
                 0: 0,
                 1: 0,
-                2: 0,
-                3: 0
+                2: 0
             },
             scale: {
                 0: 0,
@@ -167,7 +166,11 @@ const observerData: ObserverData = {
     },
     morphs: null,
     enableWebGPU: false,
-    centerScene: false
+    centerScene: false,
+    gizmo: {
+        mode: 'none',
+        space: 'local'
+    }
 };
 
 const saveOptions = (observer: Observer, name: string) => {
@@ -178,7 +181,8 @@ const saveOptions = (observer: Observer, name: string) => {
         light: options.light,
         debug: options.debug,
         shadowCatcher: options.shadowCatcher,
-        enableWebGPU: options.enableWebGPU
+        enableWebGPU: options.enableWebGPU,
+        gizmo: options.gizmo
     }));
 };
 

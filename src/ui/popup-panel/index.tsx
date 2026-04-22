@@ -84,9 +84,23 @@ class PopupPanel extends React.Component <{ observerData: ObserverData, setPrope
         if (this.props.observerData.runtime.xrActive) {
             return null;
         }
-        return (<div id='popup' className={this.props.observerData.scene.nodes === '[]' ? 'empty' : null}>
+        const setProperty = this.props.setProperty;
+        const gizmo = this.props.observerData.gizmo;
+        const sceneEmpty = this.props.observerData.scene.nodes === '[]';
+        const gizmoBtnClass = (mode: string) => (gizmo?.mode === mode ? ['popup-button', 'gizmo-button', 'selected'] : ['popup-button', 'gizmo-button']);
+        return (<div id='popup' className={sceneEmpty ? 'empty' : null}>
             <PopupPanelControls observerData={this.props.observerData} setProperty={this.props.setProperty} />
             <PopupButtonControls observerData={this.props.observerData} setProperty={this.props.setProperty} />
+            <div id='gizmo-toolbar' hidden={sceneEmpty ? true : undefined}>
+                <Button class={gizmoBtnClass('none')}      text='None'   height={30} onClick={() => setProperty('gizmo.mode', 'none')} />
+                <Button class={gizmoBtnClass('translate')} text='Move'   height={30} onClick={() => setProperty('gizmo.mode', 'translate')} />
+                <Button class={gizmoBtnClass('rotate')}    text='Rotate' height={30} onClick={() => setProperty('gizmo.mode', 'rotate')} />
+                <Button class={gizmoBtnClass('scale')}     text='Scale'  height={30} onClick={() => setProperty('gizmo.mode', 'scale')} />
+                <Button class={['popup-button', 'gizmo-button', 'gizmo-space-button']}
+                    text={gizmo?.space === 'local' ? 'Local' : 'World'}
+                    height={30}
+                    onClick={() => setProperty('gizmo.space', gizmo?.space === 'local' ? 'world' : 'local')} />
+            </div>
             <Button
                 class='popup-button'
                 id='launch-ar-button'
