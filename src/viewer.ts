@@ -202,6 +202,10 @@ class Viewer {
 
     transformController: TransformController = null;
 
+    // the entity the transform gizmo operates on - always the first loaded
+    // .glb (mesh) entity so the user can only move the mesh, not the splats.
+    meshTarget: Entity = null;
+
     // true while the viewer itself is writing position/rotation/scale to the
     // observer, so the UI->entity write-back listener doesn't echo it back.
     suppressSelectedNodeSync = false;
@@ -960,6 +964,7 @@ class Viewer {
 
         // detach the transform gizmo from any entity we're about to destroy
         this.selectedNode = null;
+        this.meshTarget = null;
         if (this.transformController) {
             this.transformController.attach(null);
         }
@@ -1535,22 +1540,18 @@ class Viewer {
 
         this.selectedNode = graphNode;
 
-        // attach the gizmo to the newly selected entity (or detach if none)
-        if (this.transformController) {
-            this.transformController.attach((graphNode as Entity) ?? null);
-        }
-
         this.dirtyWireframe = true;
         this.dirtyBounds = true;
         this.dirtySkeleton = true;
         this.renderNextFrame();
     }
 
-    // push the current selected entity's local transform into the observer
-    // without re-applying it back to the entity
+    // push the mesh target's local transform into the observer without
+    // re-applying it back to the entity. If the mesh target isn't the
+    // currently selected node the panel is untouched.
     private syncSelectedNodeTransform() {
-        const node = this.selectedNode;
-        if (!node) {
+        const node = this.meshTarget;
+        if (!node || this.selectedNode !== node) {
             return;
         }
         this.suppressSelectedNodeSync = true;
@@ -1581,41 +1582,47 @@ class Viewer {
         return null;
     }
 
+    // only allow numeric edits when the mesh target itself is selected - this
+    // keeps the UI/gizmo scope consistent (mesh only).
+    private canApplyNumericEdit() {
+        return !this.suppressSelectedNodeSync && this.meshTarget && this.selectedNode === this.meshTarget;
+    }
+
     private applySelectedNodePosition(value: any) {
-        if (this.suppressSelectedNodeSync || !this.selectedNode) {
+        if (!this.canApplyNumericEdit()) {
             return;
         }
         const v = Viewer.parseVec3(value);
         if (!v) {
             return;
         }
-        this.selectedNode.setLocalPosition(v[0], v[1], v[2]);
+        this.meshTarget.setLocalPosition(v[0], v[1], v[2]);
         this.dirtyBounds = true;
         this.renderNextFrame();
     }
 
     private applySelectedNodeRotation(value: any) {
-        if (this.suppressSelectedNodeSync || !this.selectedNode) {
+        if (!this.canApplyNumericEdit()) {
             return;
         }
         const v = Viewer.parseVec3(value);
         if (!v) {
             return;
         }
-        this.selectedNode.setLocalEulerAngles(v[0], v[1], v[2]);
+        this.meshTarget.setLocalEulerAngles(v[0], v[1], v[2]);
         this.dirtyBounds = true;
         this.renderNextFrame();
     }
 
     private applySelectedNodeScale(value: any) {
-        if (this.suppressSelectedNodeSync || !this.selectedNode) {
+        if (!this.canApplyNumericEdit()) {
             return;
         }
         const v = Viewer.parseVec3(value);
         if (!v) {
             return;
         }
-        this.selectedNode.setLocalScale(v[0], v[1], v[2]);
+        this.meshTarget.setLocalScale(v[0], v[1], v[2]);
         this.dirtyBounds = true;
         this.renderNextFrame();
     }
@@ -2053,13 +2060,19 @@ class Viewer {
             }
         });
 
-        // auto-select the first mesh (.glb container) entity and default to the
-        // translate gizmo when both a mesh and a splat are present so the user
-        // can immediately start aligning the mesh to the splats.
-        const meshEntity = this.entityAssets.find(ea => ea.asset?.type === 'container')?.entity;
+        // find the first mesh (.glb container) entity - this is the only
+        // entity the transform gizmo is allowed to move. The splats stay
+        // fixed as the alignment reference.
+        const meshEntity = this.entityAssets.find(ea => ea.asset?.type === 'container')?.entity ?? null;
         const hasSplat = this.entityAssets.some(ea => ea.asset?.type === 'gsplat');
-        if (meshEntity && !this.selectedNode) {
-            this.setSelectedNode(meshEntity.path);
+        if (meshEntity && this.meshTarget !== meshEntity) {
+            this.meshTarget = meshEntity;
+            if (this.transformController) {
+                this.transformController.attach(meshEntity);
+            }
+            if (!this.selectedNode) {
+                this.setSelectedNode(meshEntity.path);
+            }
             if (hasSplat && this.observer.get('gizmo.mode') === 'none') {
                 this.observer.set('gizmo.mode', 'translate');
             }
