@@ -9,7 +9,6 @@ import { ErrorBox, WarningsBox } from './errors';
 import LeftPanel from './left-panel';
 import LoadControls from './load-controls';
 import PopupPanel from './popup-panel';
-import SelectedNode from './selected-node';
 import { version as appVersion } from '../../package.json';
 
 class App extends React.Component<{ observer: Observer }> {
@@ -44,7 +43,7 @@ class App extends React.Component<{ observer: Observer }> {
     render() {
         const xrActive = this.state?.runtime?.xrActive;
         return <div id="application-container">
-            <Container id="panel-left" flex resizable='right' resizeMin={220} resizeMax={800} hidden={xrActive}>
+            <Container id="panel-left" class='collapsed' flex resizable='right' resizeMin={220} resizeMax={800} hidden={xrActive}>
                 <div className="header" style={{ display: 'none' }}>
                     <div id="title">
                         <img src={'static/playcanvas-logo.png'}/>
@@ -59,7 +58,6 @@ class App extends React.Component<{ observer: Observer }> {
             <div id='canvas-wrapper'>
                 <canvas id="application-canvas" ref={this.canvasRef} />
                 <LoadControls setProperty={this._setStateProperty}/>
-                <SelectedNode sceneData={this.state.scene} setProperty={this._setStateProperty} />
                 <PopupPanel observerData={this.state} setProperty={this._setStateProperty} />
                 <ErrorBox observerData={this.state} setProperty={this._setStateProperty} />
                 <WarningsBox observerData={this.state} setProperty={this._setStateProperty} />
