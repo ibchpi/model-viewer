@@ -736,6 +736,11 @@ class Viewer {
         this.observer.on('zoomToSplatTrigger:set', () => {
             this.focusSplats();
         });
+
+        // one-shot zoom-to-mesh-extents trigger
+        this.observer.on('zoomToMeshTrigger:set', () => {
+            this.focusMesh();
+        });
     }
 
     private reloadSettings() {
@@ -906,6 +911,39 @@ class Viewer {
         const forward = init ? Vec3.FORWARD : this.camera.forward;
         const start = forward.clone().mulScalar(-zoom).add(focus);
         this.cameraControls.reset(focus, start);
+    }
+
+    private focusMesh() {
+        const meshAssets = this.entityAssets.filter(ea => ea.asset?.type === 'container');
+        if (meshAssets.length === 0) {
+            return;
+        }
+
+        const combined = new BoundingBox();
+        const each = new BoundingBox();
+        let hasBounds = false;
+        for (const ea of meshAssets) {
+            if (this.calcMeshEntityWorldBounds(ea.entity, each)) {
+                if (!hasBounds) {
+                    combined.copy(each);
+                    hasBounds = true;
+                } else {
+                    combined.add(each);
+                }
+            }
+        }
+        if (!hasBounds) {
+            return;
+        }
+
+        const focus = combined.center.clone();
+        const sceneSize = combined.halfExtents.length();
+        this.cameraControls.zoomRange = new Vec2(ZOOM_SCALE_MIN, 10 * sceneSize);
+
+        const zoom = this.calcZoom(sceneSize);
+        const start = this.camera.forward.clone().mulScalar(-zoom).add(focus);
+        this.cameraControls.reset(focus, start);
+        this.renderNextFrame();
     }
 
     private focusSplats() {

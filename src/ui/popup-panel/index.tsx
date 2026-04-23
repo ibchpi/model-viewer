@@ -99,6 +99,9 @@ class PopupPanel extends React.Component <{ observerData: ObserverData, setPrope
                 <Button class={viewBtnClass(view?.mesh !== false)} text='Mesh' height={30}
                     hidden={!scene.hasMesh}
                     onClick={() => setProperty('view.mesh', !(view?.mesh !== false))} />
+                <Button class={['popup-button', 'gizmo-button']} text='Zoom Mesh' height={30}
+                    hidden={!scene.hasMesh}
+                    onClick={() => setProperty('zoomToMeshTrigger', Date.now())} />
                 <Button class={viewBtnClass(view?.splats !== false)} text='Splats' height={30}
                     hidden={!scene.hasSplats}
                     onClick={() => setProperty('view.splats', !(view?.splats !== false))} />
