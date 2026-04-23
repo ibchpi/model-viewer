@@ -86,11 +86,23 @@ class PopupPanel extends React.Component <{ observerData: ObserverData, setPrope
         }
         const setProperty = this.props.setProperty;
         const gizmo = this.props.observerData.gizmo;
-        const sceneEmpty = this.props.observerData.scene.nodes === '[]';
+        const view = this.props.observerData.view;
+        const scene = this.props.observerData.scene;
+        const sceneEmpty = scene.nodes === '[]';
         const gizmoBtnClass = (mode: string) => (gizmo?.mode === mode ? ['popup-button', 'gizmo-button', 'selected'] : ['popup-button', 'gizmo-button']);
+        const viewBtnClass = (active: boolean) => (active ? ['popup-button', 'gizmo-button', 'selected'] : ['popup-button', 'gizmo-button']);
+        const viewToolbarHidden = sceneEmpty || (!scene.hasMesh && !scene.hasSplats);
         return (<div id='popup' className={sceneEmpty ? 'empty' : null}>
             <PopupPanelControls observerData={this.props.observerData} setProperty={this.props.setProperty} />
             <PopupButtonControls observerData={this.props.observerData} setProperty={this.props.setProperty} />
+            <div id='view-toolbar' hidden={viewToolbarHidden ? true : undefined}>
+                <Button class={viewBtnClass(view?.mesh !== false)} text='Mesh' height={30}
+                    hidden={!scene.hasMesh}
+                    onClick={() => setProperty('view.mesh', !(view?.mesh !== false))} />
+                <Button class={viewBtnClass(view?.splats !== false)} text='Splats' height={30}
+                    hidden={!scene.hasSplats}
+                    onClick={() => setProperty('view.splats', !(view?.splats !== false))} />
+            </div>
             <div id='gizmo-toolbar' hidden={sceneEmpty ? true : undefined}>
                 <Button class={gizmoBtnClass('none')}      text='None'   height={30} onClick={() => setProperty('gizmo.mode', 'none')} />
                 <Button class={gizmoBtnClass('translate')} text='Move'   height={30} onClick={() => setProperty('gizmo.mode', 'translate')} />

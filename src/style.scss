@@ -304,6 +304,19 @@ input {
     display: none;
 }
 
+#view-toolbar {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    display: flex;
+    align-items: center;
+    pointer-events: auto;
+}
+
+#view-toolbar[hidden] {
+    display: none;
+}
+
 .gizmo-button {
     margin: 0 4px !important;
     min-width: 56px !important;

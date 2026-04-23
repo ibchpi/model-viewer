@@ -155,7 +155,9 @@ const observerData: ObserverData = {
         },
         loadTime: null,
         cameras: '[]',
-        selectedCamera: ''
+        selectedCamera: '',
+        hasMesh: false,
+        hasSplats: false
     },
     runtime: {
         activeDeviceType: '',
@@ -170,6 +172,10 @@ const observerData: ObserverData = {
     gizmo: {
         mode: 'none',
         space: 'local'
+    },
+    view: {
+        mesh: true,
+        splats: true
     }
 };
 
@@ -182,7 +188,8 @@ const saveOptions = (observer: Observer, name: string) => {
         debug: options.debug,
         shadowCatcher: options.shadowCatcher,
         enableWebGPU: options.enableWebGPU,
-        gizmo: options.gizmo
+        gizmo: options.gizmo,
+        view: options.view
     }));
 };
 

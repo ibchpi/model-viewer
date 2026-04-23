@@ -703,6 +703,10 @@ class Viewer {
             'gizmo.mode': (mode: GizmoMode) => this.transformController.setMode(mode),
             'gizmo.space': (space: GizmoSpace) => this.transformController.setSpace(space),
 
+            // per-entity-type visibility
+            'view.mesh': (visible: boolean) => this.setTypeVisibility('container', visible),
+            'view.splats': (visible: boolean) => this.setTypeVisibility('gsplat', visible),
+
             centerScene: this.setCenterScene.bind(this)
         };
 
@@ -989,6 +993,11 @@ class Viewer {
         // reset animation state
         this.animTracks = [];
         this.animationMap = {};
+
+        // reset per-type presence flags so view toggles hide until a new
+        // asset of the matching type is loaded
+        this.observer.set('scene.hasMesh', false);
+        this.observer.set('scene.hasSplats', false);
     }
 
     updateSceneStats() {
@@ -1107,6 +1116,13 @@ class Viewer {
 
         this.observer.set('scene.cameras', JSON.stringify(cameras));
         this.observer.set('scene.selectedCamera', '');
+
+        // which asset types are currently present - used by the UI to decide
+        // whether to show the matching view-toggle button
+        const hasMesh = this.entityAssets.some(ea => ea.asset?.type === 'container');
+        const hasSplats = this.entityAssets.some(ea => ea.asset?.type === 'gsplat');
+        this.observer.set('scene.hasMesh', hasMesh);
+        this.observer.set('scene.hasSplats', hasSplats);
     }
 
     downloadPngScreenshot() {
@@ -1544,6 +1560,61 @@ class Viewer {
         this.dirtyBounds = true;
         this.dirtySkeleton = true;
         this.renderNextFrame();
+    }
+
+    // show/hide all loaded entities of the given asset type
+    private setTypeVisibility(type: 'container' | 'gsplat', visible: boolean) {
+        this.entityAssets.forEach((ea) => {
+            if (ea.asset?.type === type && ea.entity) {
+                ea.entity.enabled = visible;
+            }
+        });
+        this.dirtyBounds = true;
+        this.renderNextFrame();
+    }
+
+    // translate the mesh target so its world-space geometry bounding-box
+    // center coincides with the splat cloud's center. Runs once per load
+    // as the default alignment - the user is free to move the mesh
+    // afterwards via the transform gizmo or numeric inputs.
+    private alignMeshCenterToSplats() {
+        if (!this.meshTarget) {
+            return;
+        }
+
+        const splatEntityAsset = this.entityAssets.find(ea => ea.asset?.type === 'gsplat');
+        if (!splatEntityAsset) {
+            return;
+        }
+
+        const splatData = (splatEntityAsset.asset.resource as GSplatResource)?.gsplatData as GSplatData;
+        if (!splatData) {
+            return;
+        }
+
+        const splatLocal = new BoundingBox();
+        if (!splatData.calcAabb(splatLocal)) {
+            return;
+        }
+
+        const splatWorld = new BoundingBox();
+        splatWorld.setFromTransformedAabb(splatLocal, splatEntityAsset.entity.getWorldTransform());
+
+        const meshInstances = this.collectMeshInstances(this.meshTarget);
+        if (meshInstances.length === 0) {
+            return;
+        }
+        const meshWorld = new BoundingBox();
+        Viewer.calcMeshBoundingBox(meshWorld, meshInstances);
+
+        const p = this.meshTarget.getPosition();
+        this.meshTarget.setPosition(
+            p.x + splatWorld.center.x - meshWorld.center.x,
+            p.y + splatWorld.center.y - meshWorld.center.y,
+            p.z + splatWorld.center.z - meshWorld.center.z
+        );
+
+        this.syncSelectedNodeTransform();
     }
 
     // push the mesh target's local transform into the observer without
@@ -2065,7 +2136,8 @@ class Viewer {
         // fixed as the alignment reference.
         const meshEntity = this.entityAssets.find(ea => ea.asset?.type === 'container')?.entity ?? null;
         const hasSplat = this.entityAssets.some(ea => ea.asset?.type === 'gsplat');
-        if (meshEntity && this.meshTarget !== meshEntity) {
+        const meshTargetChanged = meshEntity && this.meshTarget !== meshEntity;
+        if (meshTargetChanged) {
             this.meshTarget = meshEntity;
             if (this.transformController) {
                 this.transformController.attach(meshEntity);
@@ -2077,6 +2149,19 @@ class Viewer {
                 this.observer.set('gizmo.mode', 'translate');
             }
         }
+
+        // by default, align the center of the mesh geometry with the center
+        // of the splats so the user doesn't have to manually translate the
+        // mesh on top of the splats after loading
+        if (meshTargetChanged && hasSplat) {
+            this.alignMeshCenterToSplats();
+        }
+
+        // re-apply per-type visibility so newly loaded entities respect any
+        // toggle state the user already has set (or that was restored from
+        // a previous session)
+        this.setTypeVisibility('container', this.observer.get('view.mesh') !== false);
+        this.setTypeVisibility('gsplat', this.observer.get('view.splats') !== false);
 
         // dirty everything
         this.dirtyWireframe = this.dirtyBounds = this.dirtySkeleton = this.dirtyGrid = this.dirtyNormals = true;

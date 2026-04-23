@@ -139,7 +139,9 @@ export interface ObserverData {
         },
         loadTime?: number,
         cameras: string,
-        selectedCamera: string
+        selectedCamera: string,
+        hasMesh: boolean,
+        hasSplats: boolean
     },
     morphs?: Record<string, {
         name: string,
@@ -157,6 +159,10 @@ export interface ObserverData {
     gizmo: {
         mode: 'none' | 'translate' | 'rotate' | 'scale',
         space: 'local' | 'world'
+    },
+    view: {
+        mesh: boolean,
+        splats: boolean
     }
 }
 
