@@ -102,6 +102,9 @@ class PopupPanel extends React.Component <{ observerData: ObserverData, setPrope
                 <Button class={viewBtnClass(view?.splats !== false)} text='Splats' height={30}
                     hidden={!scene.hasSplats}
                     onClick={() => setProperty('view.splats', !(view?.splats !== false))} />
+                <Button class={['popup-button', 'gizmo-button']} text='Zoom Splats' height={30}
+                    hidden={!scene.hasSplats}
+                    onClick={() => setProperty('zoomToSplatTrigger', Date.now())} />
             </div>
             <div id='gizmo-toolbar' hidden={sceneEmpty ? true : undefined}>
                 <Button class={gizmoBtnClass('none')}      text='None'   height={30} onClick={() => setProperty('gizmo.mode', 'none')} />

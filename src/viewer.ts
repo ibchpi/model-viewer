@@ -731,6 +731,11 @@ class Viewer {
             this.dirtyBounds = true;
             this.renderNextFrame();
         });
+
+        // one-shot zoom-to-splat-extents trigger
+        this.observer.on('zoomToSplatTrigger:set', () => {
+            this.focusSplats();
+        });
     }
 
     private reloadSettings() {
@@ -901,6 +906,52 @@ class Viewer {
         const forward = init ? Vec3.FORWARD : this.camera.forward;
         const start = forward.clone().mulScalar(-zoom).add(focus);
         this.cameraControls.reset(focus, start);
+    }
+
+    private focusSplats() {
+        const splatAssets = this.entityAssets.filter(ea => ea.asset?.type === 'gsplat');
+        if (splatAssets.length === 0) {
+            return;
+        }
+
+        const combined = new BoundingBox();
+        const each = new BoundingBox();
+        let hasBounds = false;
+        for (const ea of splatAssets) {
+            if (Viewer.calcSplatWorldBounds(ea.entity, ea.asset, each)) {
+                if (!hasBounds) {
+                    combined.copy(each);
+                    hasBounds = true;
+                } else {
+                    combined.add(each);
+                }
+            }
+        }
+        if (!hasBounds) {
+            return;
+        }
+
+        const focus = new Vec3();
+        if (splatAssets.length === 1) {
+            const ea = splatAssets[0];
+            const splatData = (ea.asset.resource as GSplatResource)?.gsplatData as GSplatData;
+            if (splatData) {
+                splatData.calcFocalPoint(focus, () => true);
+                ea.entity.getWorldTransform().transformPoint(focus, focus);
+            } else {
+                focus.copy(combined.center);
+            }
+        } else {
+            focus.copy(combined.center);
+        }
+
+        const sceneSize = combined.halfExtents.length();
+        this.cameraControls.zoomRange = new Vec2(ZOOM_SCALE_MIN, 10 * sceneSize);
+
+        const zoom = this.calcZoom(sceneSize);
+        const start = this.camera.forward.clone().mulScalar(-zoom).add(focus);
+        this.cameraControls.reset(focus, start);
+        this.renderNextFrame();
     }
 
     destroyRenderTargets() {
