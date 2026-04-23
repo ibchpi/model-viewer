@@ -1661,6 +1661,44 @@ class Viewer {
         this.syncSelectedNodeTransform();
     }
 
+    // Move the mesh entity's pivot so it coincides with the world-space
+    // center of its geometry AABB, while keeping the geometry visually in
+    // place. The transform gizmo follows this entity, so this makes the
+    // gizmo sit on the bounding-box center of the mesh.
+    private centerMeshPivotOnGeometry() {
+        if (!this.meshTarget) {
+            return;
+        }
+
+        const world = new BoundingBox();
+        if (!this.calcMeshEntityWorldBounds(this.meshTarget, world)) {
+            return;
+        }
+
+        const target = world.center;
+        const current = this.meshTarget.getPosition();
+        if (Math.abs(target.x - current.x) < 1e-6 &&
+            Math.abs(target.y - current.y) < 1e-6 &&
+            Math.abs(target.z - current.z) < 1e-6) {
+            return;
+        }
+
+        // snapshot direct-child world transforms so the geometry doesn't
+        // visually shift when we reposition the pivot
+        const children = this.meshTarget.children.slice() as Entity[];
+        const childWorldPos = children.map(c => c.getPosition().clone());
+        const childWorldRot = children.map(c => c.getRotation().clone());
+
+        this.meshTarget.setPosition(target.x, target.y, target.z);
+
+        children.forEach((c, i) => {
+            c.setPosition(childWorldPos[i]);
+            c.setRotation(childWorldRot[i]);
+        });
+
+        this.syncSelectedNodeTransform();
+    }
+
     // push the mesh target's local transform into the observer without
     // re-applying it back to the entity. If the mesh target isn't the
     // currently selected node the panel is untouched.
@@ -2202,6 +2240,10 @@ class Viewer {
             this.centerMeshAndSplats();
             this.needsRecenter = false;
         }
+
+        // ensure the mesh entity pivot sits on its geometry center so the
+        // transform gizmo aligns with the bounding-box center of the mesh
+        this.centerMeshPivotOnGeometry();
 
         // re-apply per-type visibility so newly loaded entities respect any
         // toggle state the user already has set (or that was restored from
