@@ -206,6 +206,12 @@ class Viewer {
     // .glb (mesh) entity so the user can only move the mesh, not the splats.
     meshTarget: Entity = null;
 
+    // when true, the next postSceneLoad will re-center the loaded mesh/
+    // splats on the world origin. Cleared after centering so subsequent
+    // loads / manual edits are preserved. Reset back to true on
+    // resetScene so the next fresh load gets centered again.
+    private needsRecenter = true;
+
     // true while the viewer itself is writing position/rotation/scale to the
     // observer, so the UI->entity write-back listener doesn't echo it back.
     suppressSelectedNodeSync = false;
@@ -998,6 +1004,9 @@ class Viewer {
         // asset of the matching type is loaded
         this.observer.set('scene.hasMesh', false);
         this.observer.set('scene.hasSplats', false);
+
+        // the next fresh load should re-center on the world origin
+        this.needsRecenter = true;
     }
 
     updateSceneStats() {
@@ -1573,46 +1582,81 @@ class Viewer {
         this.renderNextFrame();
     }
 
-    // translate the mesh target so its world-space geometry bounding-box
-    // center coincides with the splat cloud's center. Runs once per load
-    // as the default alignment - the user is free to move the mesh
-    // afterwards via the transform gizmo or numeric inputs.
-    private alignMeshCenterToSplats() {
-        if (!this.meshTarget) {
-            return;
-        }
-
-        const splatEntityAsset = this.entityAssets.find(ea => ea.asset?.type === 'gsplat');
-        if (!splatEntityAsset) {
-            return;
-        }
-
-        const splatData = (splatEntityAsset.asset.resource as GSplatResource)?.gsplatData as GSplatData;
+    // compute the world-space AABB of a gsplat entity from its splat data
+    private static calcSplatWorldBounds(entity: Entity, asset: Asset, result: BoundingBox): boolean {
+        const splatData = (asset.resource as GSplatResource)?.gsplatData as GSplatData;
         if (!splatData) {
-            return;
+            return false;
         }
+        const local = new BoundingBox();
+        if (!splatData.calcAabb(local)) {
+            return false;
+        }
+        result.setFromTransformedAabb(local, entity.getWorldTransform());
+        return true;
+    }
 
-        const splatLocal = new BoundingBox();
-        if (!splatData.calcAabb(splatLocal)) {
-            return;
+    // compute the world-space AABB of a mesh (container) entity from its
+    // render mesh instances (whose AABBs are already in world space)
+    private calcMeshEntityWorldBounds(entity: Entity, result: BoundingBox): boolean {
+        const meshInstances = this.collectMeshInstances(entity);
+        if (meshInstances.length === 0) {
+            return false;
         }
+        Viewer.calcMeshBoundingBox(result, meshInstances);
+        return true;
+    }
+
+    // default layout applied once per fresh load: align the mesh's
+    // geometry center to the splats' center (if both are present) and
+    // then translate both the mesh and splat entities so their shared
+    // center lands at the world origin. The transform gizmo follows the
+    // mesh target so it naturally ends up at the origin too.
+    private centerMeshAndSplats() {
+        const splatEntityAsset = this.entityAssets.find(ea => ea.asset?.type === 'gsplat');
+        const meshEntityAsset = this.entityAssets.find(ea => ea.asset?.type === 'container');
 
         const splatWorld = new BoundingBox();
-        splatWorld.setFromTransformedAabb(splatLocal, splatEntityAsset.entity.getWorldTransform());
+        const hasSplatBounds = splatEntityAsset &&
+            Viewer.calcSplatWorldBounds(splatEntityAsset.entity, splatEntityAsset.asset, splatWorld);
 
-        const meshInstances = this.collectMeshInstances(this.meshTarget);
-        if (meshInstances.length === 0) {
+        const meshWorld = new BoundingBox();
+        const hasMeshBounds = meshEntityAsset &&
+            this.calcMeshEntityWorldBounds(meshEntityAsset.entity, meshWorld);
+
+        // step 1: align mesh center onto splat center when both are present
+        if (hasSplatBounds && hasMeshBounds && meshEntityAsset) {
+            const p = meshEntityAsset.entity.getPosition();
+            meshEntityAsset.entity.setPosition(
+                p.x + splatWorld.center.x - meshWorld.center.x,
+                p.y + splatWorld.center.y - meshWorld.center.y,
+                p.z + splatWorld.center.z - meshWorld.center.z
+            );
+            meshWorld.center.copy(splatWorld.center);
+        }
+
+        // step 2: decide the common center and shift both entities so it
+        // sits at the world origin
+        let center: Vec3 | null = null;
+        if (hasSplatBounds) {
+            center = splatWorld.center;
+        } else if (hasMeshBounds) {
+            center = meshWorld.center;
+        }
+        if (!center) {
             return;
         }
-        const meshWorld = new BoundingBox();
-        Viewer.calcMeshBoundingBox(meshWorld, meshInstances);
 
-        const p = this.meshTarget.getPosition();
-        this.meshTarget.setPosition(
-            p.x + splatWorld.center.x - meshWorld.center.x,
-            p.y + splatWorld.center.y - meshWorld.center.y,
-            p.z + splatWorld.center.z - meshWorld.center.z
-        );
+        const shiftEntity = (entity: Entity) => {
+            const p = entity.getPosition();
+            entity.setPosition(p.x - center.x, p.y - center.y, p.z - center.z);
+        };
+        if (splatEntityAsset) {
+            shiftEntity(splatEntityAsset.entity);
+        }
+        if (meshEntityAsset) {
+            shiftEntity(meshEntityAsset.entity);
+        }
 
         this.syncSelectedNodeTransform();
     }
@@ -2150,11 +2194,13 @@ class Viewer {
             }
         }
 
-        // by default, align the center of the mesh geometry with the center
-        // of the splats so the user doesn't have to manually translate the
-        // mesh on top of the splats after loading
-        if (meshTargetChanged && hasSplat) {
-            this.alignMeshCenterToSplats();
+        // by default, center the mesh + splats (and therefore the transform
+        // gizmo, which follows the mesh target) on the world origin. Runs
+        // once per fresh scene so subsequent loads or manual gizmo edits
+        // are preserved.
+        if (this.needsRecenter && this.entityAssets.length > 0) {
+            this.centerMeshAndSplats();
+            this.needsRecenter = false;
         }
 
         // re-apply per-type visibility so newly loaded entities respect any
